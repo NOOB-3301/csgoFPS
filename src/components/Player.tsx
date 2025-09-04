@@ -35,7 +35,7 @@ const Player = ({ position = [0, 5, 0] }: PlayerProps) => {
   // Movement settings
   const movementConfig = {
     speed: 8,
-    jumpForce: 12,
+    jumpForce: 4,
     sprintMultiplier: 1.5,
     airControl: 0.3
   }
@@ -123,25 +123,35 @@ const Player = ({ position = [0, 5, 0] }: PlayerProps) => {
 
   // Ground check function
   const checkGrounded = (playerPosition: { x: number; y: number; z: number }) => {
-    const groundRayOrigin = new rapier.Vector3(
-      playerPosition.x, 
-      playerPosition.y + 0.1, 
-      playerPosition.z
-    )
-    const groundRayDirection = new rapier.Vector3(0, -1, 0)
+    const rayOrigin = { 
+      x: playerPosition.x, 
+      y: playerPosition.y - 0.25, 
+      z: playerPosition.z 
+    }
     
-    const groundHit = world.castRay(
-      new rapier.Ray(groundRayOrigin, groundRayDirection),
-      1.3,
-      true
+    const ray = new rapier.Ray(rayOrigin, { x: 0, y: -1, z: 0 })
+
+    const hit = world.castRay(
+      ray,
+      0.2, // Increase ray length slightly
+      true,
+      undefined,
+      rigidBodyRef.current?.handle
     )
-    
-    return groundHit !== null && groundHit.timeOfImpact < 1.2
+
+    // Debug logging
+    console.log('Ray origin:', rayOrigin)
+    console.log('Ray hit:', hit)
+    if (hit) {
+      console.log('Hit distance:', hit.timeOfImpact)
+    }
+
+    return hit !== null && hit.timeOfImpact < 0.15
   }
 
   useFrame((state, delta) => {
     if (!rigidBodyRef.current) return
-
+    
     const rigidBody = rigidBodyRef.current
     const mouse = mouseState.current
     const currentTime = state.clock.elapsedTime
@@ -163,8 +173,8 @@ const Player = ({ position = [0, 5, 0] }: PlayerProps) => {
     
     // Check if grounded
     const isGrounded = checkGrounded(playerPosition)
+    console.log(isGrounded)
     playerState.current.isGrounded = isGrounded
-    
     if (isGrounded) {
       playerState.current.lastGroundTime = currentTime
     }
@@ -222,6 +232,20 @@ const Player = ({ position = [0, 5, 0] }: PlayerProps) => {
       }, true)
     }
     
+    // Jump logic with coyote time
+    const coyoteTime = 0.025 // Allow jumping shortly after leaving ground
+    const canCoyoteJump = currentTime - playerState.current.lastGroundTime < coyoteTime
+    
+    if (keys.current.space && playerState.current.jumpCooldown <= 0) {
+      if (isGrounded || canCoyoteJump) {
+        rigidBody.setLinvel({
+          x: currentVelocity.x,
+          y: movementConfig.jumpForce,
+          z: currentVelocity.z
+        }, true)
+        playerState.current.jumpCooldown = 0.3
+      }
+    }
     
     // Set camera position to player head level
     camera.position.set(

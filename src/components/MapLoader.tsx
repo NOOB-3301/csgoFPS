@@ -14,6 +14,9 @@ const MapLoader = ({ url, onMapLoaded }: MapLoaderProps) => {
   React.useEffect(() => {
     if (gltf.scene) {
       console.log("Map is loaded")
+      console.log("Map is loaded")
+      console.log("Map scene:", gltf.scene)
+      console.log("Map bounds:", gltf.scene.children)
       onMapLoaded?.()
     }
   }, [gltf.scene, onMapLoaded])
