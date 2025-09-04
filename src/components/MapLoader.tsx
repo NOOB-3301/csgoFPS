@@ -1,4 +1,4 @@
-import React, { Suspense } from 'react'
+import React from 'react'
 import { useGLTF } from '@react-three/drei'
 import { RigidBody } from '@react-three/rapier'
 
@@ -8,10 +8,10 @@ interface MapLoaderProps {
 }
 
 const MapLoader = ({ url, onMapLoaded }: MapLoaderProps) => {
+  console.log("map starting to load")
   const gltf = useGLTF(url)
 
   React.useEffect(() => {
-    console.log("map starting to load")
     if (gltf.scene) {
       console.log("Map is loaded")
       onMapLoaded?.()

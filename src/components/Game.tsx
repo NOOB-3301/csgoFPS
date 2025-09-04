@@ -1,8 +1,9 @@
-import React, { Suspense } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { Physics } from '@react-three/rapier'
-import MapLoader from './MapLoader'
 import { OrbitControls } from '@react-three/drei'
+import MapLoader from './MapLoader'
+import Player from './Player'
+import { Physics } from '@react-three/rapier'
+import { Suspense } from 'react'
 
 const Game = () => {
   return (
@@ -10,12 +11,12 @@ const Game = () => {
       <Canvas>
         <ambientLight intensity={0.5} />
         <spotLight position={[10, 10, 10]} angle={0.15} penumbra={1} />
-        <Physics gravity={[0, -9.81, 0]} debug>
-          <Suspense fallback={null}>
+        <Suspense>
+          <Physics debug>
             <MapLoader url='src/assets/de_dust_2_with_real_light.glb' />
-            <OrbitControls />
-          </Suspense>
-        </Physics>
+            <Player position={[10, 10, 0]} />
+          </Physics>
+        </Suspense>
       </Canvas>
     </div>
   )

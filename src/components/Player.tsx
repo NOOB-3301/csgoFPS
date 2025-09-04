@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react'
+import React, { useRef, useEffect } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { RigidBody, CapsuleCollider, useRapier } from '@react-three/rapier'
 import { Vector3 } from 'three'
@@ -6,26 +6,12 @@ import type { RapierRigidBody } from '@react-three/rapier'
 
 interface PlayerProps {
   position?: [number, number, number]
-  onPositionChange?: (position: Vector3) => void
 }
 
-const Player = ({ position = [0, 5, 0], onPositionChange }: PlayerProps) => {
+const Player = ({ position = [0, 5, 0] }: PlayerProps) => {
   const rigidBodyRef = useRef<RapierRigidBody>(null)
   const { camera } = useThree()
   const { rapier, world } = useRapier()
-  
-  // Collision state
-  const [collisionInfo, setCollisionInfo] = useState<{
-    isGrounded: boolean,
-    touchingWall: boolean,
-    surfaceNormal: Vector3 | null,
-    surfaceType: string | null
-  }>({
-    isGrounded: false,
-    touchingWall: false,
-    surfaceNormal: null,
-    surfaceType: null
-  })
   
   // Mouse state for FPS camera
   const mouseState = useRef({
@@ -57,7 +43,8 @@ const Player = ({ position = [0, 5, 0], onPositionChange }: PlayerProps) => {
   // Player state
   const playerState = useRef({
     jumpCooldown: 0,
-    lastGroundTime: 0
+    lastGroundTime: 0,
+    isGrounded: false
   })
 
   useEffect(() => {
@@ -115,7 +102,7 @@ const Player = ({ position = [0, 5, 0], onPositionChange }: PlayerProps) => {
       }
     }
 
-    const handlePointerLock = () => {
+    const handleClick = () => {
       if (document.pointerLockElement === null) {
         document.body.requestPointerLock()
       }
@@ -124,19 +111,18 @@ const Player = ({ position = [0, 5, 0], onPositionChange }: PlayerProps) => {
     window.addEventListener('keydown', handleKeyDown)
     window.addEventListener('keyup', handleKeyUp)
     window.addEventListener('mousemove', handleMouseMove)
-    window.addEventListener('click', handlePointerLock)
+    window.addEventListener('click', handleClick)
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
       window.removeEventListener('mousemove', handleMouseMove)
-      window.removeEventListener('click', handlePointerLock)
+      window.removeEventListener('click', handleClick)
     }
   }, [])
 
-  // Enhanced collision detection with TrimeshCollider
-  const checkCollisions = (playerPosition: any, currentTime: number) => {
-    // Ground check with more precision for TrimeshCollider
+  // Ground check function
+  const checkGrounded = (playerPosition: { x: number; y: number; z: number }) => {
     const groundRayOrigin = new rapier.Vector3(
       playerPosition.x, 
       playerPosition.y + 0.1, 
@@ -150,53 +136,7 @@ const Player = ({ position = [0, 5, 0], onPositionChange }: PlayerProps) => {
       true
     )
     
-    const isGrounded = groundHit !== null && groundHit.toi < 1.2
-    
-    if (isGrounded) {
-      playerState.current.lastGroundTime = currentTime
-    }
-    
-    // Wall detection for TrimeshCollider (multiple rays for better detection)
-    const directions = [
-      new rapier.Vector3(1, 0, 0),   // right
-      new rapier.Vector3(-1, 0, 0),  // left
-      new rapier.Vector3(0, 0, 1),   // forward
-      new rapier.Vector3(0, 0, -1),  // backward
-      new rapier.Vector3(0.707, 0, 0.707),   // diagonal
-      new rapier.Vector3(-0.707, 0, 0.707),  // diagonal
-      new rapier.Vector3(0.707, 0, -0.707),  // diagonal
-      new rapier.Vector3(-0.707, 0, -0.707)  // diagonal
-    ]
-    
-    let touchingWall = false
-    let surfaceNormal: Vector3 | null = null
-    
-    for (const direction of directions) {
-      const wallRayOrigin = new rapier.Vector3(
-        playerPosition.x, 
-        playerPosition.y + 0.4, 
-        playerPosition.z
-      )
-      
-      const wallHit = world.castRay(
-        new rapier.Ray(wallRayOrigin, direction),
-        0.6,
-        true
-      )
-      
-      if (wallHit && wallHit.toi < 0.5) {
-        touchingWall = true
-        surfaceNormal = new Vector3(-direction.x, -direction.y, -direction.z)
-        break
-      }
-    }
-    
-    return {
-      isGrounded,
-      touchingWall,
-      surfaceNormal,
-      surfaceType: groundHit ? 'trimesh' : null
-    }
+    return groundHit !== null && groundHit.timeOfImpact < 1.2
   }
 
   useFrame((state, delta) => {
@@ -221,9 +161,13 @@ const Player = ({ position = [0, 5, 0], onPositionChange }: PlayerProps) => {
     const playerPosition = rigidBody.translation()
     const currentVelocity = rigidBody.linvel()
     
-    // Check collisions with TrimeshCollider
-    const newCollisionInfo = checkCollisions(playerPosition, currentTime)
-    setCollisionInfo(newCollisionInfo)
+    // Check if grounded
+    const isGrounded = checkGrounded(playerPosition)
+    playerState.current.isGrounded = isGrounded
+    
+    if (isGrounded) {
+      playerState.current.lastGroundTime = currentTime
+    }
     
     // Update jump cooldown
     if (playerState.current.jumpCooldown > 0) {
@@ -262,14 +206,14 @@ const Player = ({ position = [0, 5, 0], onPositionChange }: PlayerProps) => {
       direction.multiplyScalar(currentSpeed)
       
       // Apply movement based on grounded state
-      const movementMultiplier = newCollisionInfo.isGrounded ? 1 : movementConfig.airControl
+      const movementMultiplier = isGrounded ? 1 : movementConfig.airControl
       
       rigidBody.setLinvel({
         x: direction.x * movementMultiplier,
         y: currentVelocity.y, // Preserve vertical velocity
         z: direction.z * movementMultiplier
       }, true)
-    } else if (newCollisionInfo.isGrounded) {
+    } else if (isGrounded) {
       // Apply friction when grounded and not moving
       rigidBody.setLinvel({
         x: currentVelocity.x * 0.8,
@@ -278,61 +222,17 @@ const Player = ({ position = [0, 5, 0], onPositionChange }: PlayerProps) => {
       }, true)
     }
     
-    // Enhanced jump logic with coyote time
-    const coyoteTime = 0.1 // Allow jumping shortly after leaving ground
-    const canCoyoteJump = currentTime - playerState.current.lastGroundTime < coyoteTime
-    
-    if (keys.current.space && playerState.current.jumpCooldown <= 0) {
-      if (newCollisionInfo.isGrounded || canCoyoteJump) {
-        // Normal jump
-        rigidBody.setLinvel({
-          x: currentVelocity.x,
-          y: movementConfig.jumpForce,
-          z: currentVelocity.z
-        }, true)
-        playerState.current.jumpCooldown = 0.3
-      } else if (newCollisionInfo.touchingWall && newCollisionInfo.surfaceNormal) {
-        // Wall jump with TrimeshCollider
-        const wallJumpForce = newCollisionInfo.surfaceNormal.multiplyScalar(8)
-        rigidBody.setLinvel({
-          x: currentVelocity.x + wallJumpForce.x,
-          y: movementConfig.jumpForce * 0.8,
-          z: currentVelocity.z + wallJumpForce.z
-        }, true)
-        playerState.current.jumpCooldown = 0.5
-      }
-    }
     
     // Set camera position to player head level
     camera.position.set(
       playerPosition.x,
-      playerPosition.y + 0.8, // Eye level
+      playerPosition.y + 1.0, // Eye level (standing height)
       playerPosition.z
     )
     
     // Set camera rotation for FPS view
     camera.rotation.set(mouse.pitch, mouse.yaw, 0)
-    
-    // Notify parent of position change
-    if (onPositionChange) {
-      onPositionChange(new Vector3(playerPosition.x, playerPosition.y, playerPosition.z))
-    }
   })
-
-  // Collision event handlers for TrimeshCollider
-  const handleCollisionEnter = (event: any) => {
-    const otherBody = event.other.rigidBodyObject?.userData
-    if (otherBody?.type === 'map') {
-      console.log('Player touched TrimeshCollider surface:', otherBody.name)
-    }
-  }
-
-  const handleCollisionExit = (event: any) => {
-    const otherBody = event.other.rigidBodyObject?.userData
-    if (otherBody?.type === 'map') {
-      console.log('Player left TrimeshCollider surface:', otherBody.name)
-    }
-  }
 
   return (
     <RigidBody
@@ -345,37 +245,20 @@ const Player = ({ position = [0, 5, 0], onPositionChange }: PlayerProps) => {
       linearDamping={0.1}
       angularDamping={0.1}
       userData={{ type: 'player' }}
-      onCollisionEnter={handleCollisionEnter}
-      onCollisionExit={handleCollisionExit}
     >
       <CapsuleCollider 
-        args={[0.8, 0.4]} 
+        args={[0.3, 0.20]} 
         restitution={0.1}
         friction={0.8}
       />
       
-      {/* Debug visualization */}
-      <mesh visible={true}>
-        <capsuleGeometry args={[0.4, 0.8, 8, 16]} />
+      {/* Debug visualization - visible player body */}
+      <mesh visible={false}>
+        <capsuleGeometry args={[0.20, 0.3, 4, 6]} />
         <meshStandardMaterial 
-          color={
-            collisionInfo.isGrounded ? "#00ff00" : 
-            collisionInfo.touchingWall ? "#ffff00" : 
-            "#ff0000"
-          } 
+          color={playerState.current.isGrounded ? "#00ff00" : "#ff0000"} 
           transparent 
           opacity={0.3}
-        />
-      </mesh>
-      
-      {/* Status indicator */}
-      <mesh position={[0, 1.5, 0]} visible={true}>
-        <sphereGeometry args={[0.1]} />
-        <meshBasicMaterial 
-          color={
-            collisionInfo.isGrounded ? "green" : 
-            collisionInfo.touchingWall ? "yellow" : "red"
-          } 
         />
       </mesh>
     </RigidBody>
